@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import Navbar from '../../components/Navbar'
 import client from '../../api/client'
 
-// ── modes config (single source of truth for labels) ─────────────────────────
+// ── modes config ──────────────────────────────────────────────────────────────
 const MODES = [
-  { mode: 'test',         printLabel: 'Print Test',         wordLabel: 'Test (Word)' },
+  { mode: 'test',         printLabel: 'Print Test',           wordLabel: 'Test (Word)' },
   { mode: 'key',          printLabel: 'Print Test + Answers', wordLabel: 'Test + Answers (Word)' },
-  { mode: 'answers_only', printLabel: 'Print Answers Only',  wordLabel: 'Answers Only (Word)' },
+  { mode: 'answers_only', printLabel: 'Print Answers Only',   wordLabel: 'Answers Only (Word)' },
 ]
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -29,7 +29,6 @@ function StatusBadge({ status }) {
   )
 }
 
-// Open printable HTML in a new tab using a blob URL so the auth header is sent
 async function openPrint(jobId, versionId, mode, onError) {
   try {
     const res = await client.get(
@@ -37,8 +36,8 @@ async function openPrint(jobId, versionId, mode, onError) {
       { params: { mode, format: 'print' }, responseType: 'text' }
     )
     const blob = new Blob([res.data], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    const tab = window.open(url, '_blank')
+    const url  = URL.createObjectURL(blob)
+    const tab  = window.open(url, '_blank')
     if (tab) {
       tab.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
     } else {
@@ -49,7 +48,6 @@ async function openPrint(jobId, versionId, mode, onError) {
   }
 }
 
-// Download DOCX via arraybuffer blob
 async function downloadDocx(jobId, versionId, mode, versionName, onError) {
   try {
     const res = await client.get(
@@ -60,8 +58,8 @@ async function downloadDocx(jobId, versionId, mode, versionName, onError) {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
+    const a   = document.createElement('a')
+    a.href     = url
     a.download = `${versionName}.docx`
     document.body.appendChild(a)
     a.click()
@@ -74,11 +72,13 @@ async function downloadDocx(jobId, versionId, mode, versionName, onError) {
 
 // ── JobCard ───────────────────────────────────────────────────────────────────
 
-function JobCard({ job, onError }) {
-  const [expanded, setExpanded] = useState(false)
-  const [versions, setVersions] = useState(null)
+function JobCard({ job, onError, onDelete }) {
+  const [expanded,        setExpanded]        = useState(false)
+  const [versions,        setVersions]        = useState(null)
   const [loadingVersions, setLoadingVersions] = useState(false)
-  const [busy, setBusy] = useState(null) // "versionId-mode-format"
+  const [busy,            setBusy]            = useState(null)    // "versionId-mode-format"
+  const [deleting,        setDeleting]        = useState(false)   // job-level delete
+  const [deletingVersion, setDeletingVersion] = useState(null)    // versionId being deleted
 
   const toggleExpand = async () => {
     if (!expanded && !versions) {
@@ -104,6 +104,36 @@ function JobCard({ job, onError }) {
       await downloadDocx(job.id, versionId, mode, versionName, onError)
     }
     setBusy(null)
+  }
+
+  const handleDeleteJob = (e) => {
+    e.stopPropagation()
+    if (!window.confirm(
+      `Delete print job for "${job.test_title}"?\n\nThis will permanently delete this print job and all of its versions. This cannot be undone.`
+    )) return
+    setDeleting(true)
+    client.delete(`/print-jobs/${job.id}`)
+      .then(() => onDelete(job.id))
+      .catch(err => {
+        onError(err.response?.data?.error || 'Failed to delete print job')
+        setDeleting(false)
+      })
+  }
+
+  const handleDeleteVersion = async (e, versionId, versionName) => {
+    e.stopPropagation()
+    if (!window.confirm(
+      `Delete version "${versionName}"?\n\nThis will permanently remove this version. This cannot be undone.`
+    )) return
+    setDeletingVersion(versionId)
+    try {
+      await client.delete(`/print-jobs/${job.id}/versions/${versionId}`)
+      setVersions(prev => prev.filter(v => v.id !== versionId))
+    } catch (err) {
+      onError(err.response?.data?.error || 'Failed to delete version')
+    } finally {
+      setDeletingVersion(null)
+    }
   }
 
   const createdDate = new Date(job.created_at).toLocaleString()
@@ -132,6 +162,16 @@ function JobCard({ job, onError }) {
         {job.status === 'failed' && job.error_message && (
           <span style={{ fontSize: 12, color: '#991b1b', maxWidth: 260 }}>{job.error_message}</span>
         )}
+
+        <button
+          className="btn btn-danger btn-sm"
+          style={{ flexShrink: 0, fontSize: 12 }}
+          onClick={handleDeleteJob}
+          disabled={deleting}
+          title="Delete this print job and all its versions"
+        >
+          {deleting ? 'Deleting…' : 'Delete Job'}
+        </button>
       </div>
 
       {/* Versions panel */}
@@ -149,14 +189,14 @@ function JobCard({ job, onError }) {
               {/* Column headers */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'minmax(150px, 1fr) repeat(3, minmax(150px, auto))',
+                gridTemplateColumns: 'minmax(150px, 1fr) repeat(3, minmax(150px, auto)) auto',
                 gap: '4px 16px',
                 alignItems: 'center',
                 paddingBottom: 6,
                 marginBottom: 4,
               }}>
-                {['Version', 'Test', 'Test + Answers', 'Answers Only'].map(h => (
-                  <div key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {['Version', 'Test', 'Test + Answers', 'Answers Only', ''].map((h, i) => (
+                  <div key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {h}
                   </div>
                 ))}
@@ -166,14 +206,16 @@ function JobCard({ job, onError }) {
               {versions.map(v => (
                 <div key={v.id} style={{
                   display: 'grid',
-                  gridTemplateColumns: 'minmax(150px, 1fr) repeat(3, minmax(150px, auto))',
+                  gridTemplateColumns: 'minmax(150px, 1fr) repeat(3, minmax(150px, auto)) auto',
                   gap: '4px 16px',
                   alignItems: 'center',
                   padding: '8px 0',
                   borderTop: '1px solid #e2e8f0',
                 }}>
+                  {/* Version name */}
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{v.version_name}</div>
 
+                  {/* Print + Word buttons per mode */}
                   {MODES.map(({ mode, printLabel, wordLabel }) => {
                     const printKey = `${v.id}-${mode}-print`
                     const docxKey  = `${v.id}-${mode}-docx`
@@ -183,7 +225,7 @@ function JobCard({ job, onError }) {
                           className="btn btn-ghost btn-sm"
                           style={{ fontSize: 12, whiteSpace: 'nowrap', textAlign: 'left' }}
                           onClick={() => handleAction(v.id, v.version_name, mode, 'print')}
-                          disabled={busy === printKey}
+                          disabled={busy === printKey || deletingVersion === v.id}
                           title={`${printLabel} for ${v.version_name}`}
                         >
                           {busy === printKey ? '…' : printLabel}
@@ -192,7 +234,7 @@ function JobCard({ job, onError }) {
                           className="btn btn-ghost btn-sm"
                           style={{ fontSize: 12, whiteSpace: 'nowrap', textAlign: 'left', color: '#1d4ed8', borderColor: '#bfdbfe' }}
                           onClick={() => handleAction(v.id, v.version_name, mode, 'docx')}
-                          disabled={busy === docxKey}
+                          disabled={busy === docxKey || deletingVersion === v.id}
                           title={`Download ${wordLabel} for ${v.version_name}`}
                         >
                           {busy === docxKey ? '…' : `↓ ${wordLabel}`}
@@ -200,6 +242,19 @@ function JobCard({ job, onError }) {
                       </div>
                     )
                   })}
+
+                  {/* Per-version delete */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                      onClick={e => handleDeleteVersion(e, v.id, v.version_name)}
+                      disabled={deletingVersion === v.id || !!busy}
+                      title={`Delete version ${v.version_name}`}
+                    >
+                      {deletingVersion === v.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -214,9 +269,9 @@ function JobCard({ job, onError }) {
 
 export default function PrintJobsPage() {
   const navigate = useNavigate()
-  const [jobs, setJobs] = useState([])
+  const [jobs,    setJobs]    = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error,   setError]   = useState('')
 
   const fetchJobs = useCallback(async () => {
     setLoading(true)
@@ -231,6 +286,10 @@ export default function PrintJobsPage() {
   }, [])
 
   useEffect(() => { fetchJobs() }, [fetchJobs])
+
+  const handleDeleteJob = (jobId) => {
+    setJobs(prev => prev.filter(j => j.id !== jobId))
+  }
 
   return (
     <>
@@ -263,7 +322,12 @@ export default function PrintJobsPage() {
         ) : (
           <div>
             {jobs.map(job => (
-              <JobCard key={job.id} job={job} onError={setError} />
+              <JobCard
+                key={job.id}
+                job={job}
+                onError={setError}
+                onDelete={handleDeleteJob}
+              />
             ))}
           </div>
         )}
