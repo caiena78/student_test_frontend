@@ -21,6 +21,7 @@ export default function Navbar() {
     { to: '/teacher/groups', label: 'Groups' },
     { to: '/teacher/students', label: 'Students' },
     { to: '/teacher/tests', label: 'Tests' },
+    { to: '/teacher/print-jobs', label: 'Printing' },
   ]
 
   const studentLinks = [

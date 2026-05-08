@@ -13,6 +13,7 @@ import TestEditorPage from './pages/teacher/TestEditorPage'
 import AssignTestPage from './pages/teacher/AssignTestPage'
 import TestResultsPage from './pages/teacher/TestResultsPage'
 import AttemptReviewPage from './pages/teacher/AttemptReviewPage'
+import PrintJobsPage from './pages/teacher/PrintJobsPage'
 import StudentDashboard from './pages/student/StudentDashboard'
 import TakeTestPage from './pages/student/TakeTestPage'
 import AttemptResultPage from './pages/student/AttemptResultPage'
@@ -78,6 +79,11 @@ export default function App() {
           <Route path="/teacher/attempts/:id" element={
             <ProtectedRoute roles={['teacher']}>
               <AttemptReviewPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/teacher/print-jobs" element={
+            <ProtectedRoute roles={['teacher']}>
+              <PrintJobsPage />
             </ProtectedRoute>
           } />
 
